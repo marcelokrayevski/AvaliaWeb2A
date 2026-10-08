@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Avaliação - Turma 2A</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #064e3b 0%, #022c22 100%);
+      min-height: 100vh;
+      color: #f0fdf4;
+    }
+    .glass-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
+    }
+    .glass-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+  </style>
+</head>
+<body class="p-4 md:p-8 font-sans">
+
+  <!-- Modal de Login -->
+  <div id="modal-login" class="fixed inset-0 bg-emerald-950/90 backdrop-blur-md flex items-center justify-center p-4 z-50">
+    <div class="glass-card bg-emerald-950/80 p-6 rounded-2xl w-full max-w-md border border-emerald-800 shadow-2xl">
+      <h2 class="text-2xl font-bold text-emerald-100 mb-2 text-center">Identificação do Aluno - Turma 2A</h2>
+      <p class="text-emerald-300/70 text-xs mb-6 text-center">Selecione o seu nome para acessar o painel de avaliações.</p>
+      
+      <div class="mb-5">
+        <label class="block text-sm font-medium text-emerald-200 mb-2">Quem é você?</label>
+        <select id="select-aluno-login" class="w-full bg-emerald-900/60 border border-emerald-700/80 rounded-xl px-4 py-3 text-emerald-100 focus:outline-none focus:border-emerald-500">
+          <option value="">-- Selecione seu nome --</option>
+        </select>
+      </div>
+
+      <button onclick="realizarLogin()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-semibold transition shadow-lg shadow-emerald-900/50">
+        Entrar na Sala
+      </button>
+    </div>
+  </div>
+
+  <!-- Interface Principal -->
+  <div class="max-w-7xl mx-auto hidden" id="app-container">
+    <header class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4 bg-emerald-950/60 p-5 rounded-2xl border border-emerald-800/80">
+      <div>
+        <h1 class="text-2xl font-extrabold text-emerald-400">Avaliação de Apresentações - Turma 2A</h1>
+        <p class="text-emerald-200/70 text-xs mt-1">Avaliador logado: <span id="nome-usuario-logado" class="font-bold text-emerald-100"></span></p>
+      </div>
+      <div class="flex items-center gap-4 w-full md:w-auto justify-between">
+        <div class="text-right">
+          <p class="text-xs text-emerald-300/70">Progresso de Avaliação</p>
+          <p class="text-sm font-bold text-emerald-300" id="texto-progresso">0 / 40 colegas</p>
+        </div>
+        <button onclick="trocarUsuario()" class="text-xs text-emerald-200 hover:text-white bg-emerald-900/60 border border-emerald-700 px-3 py-2 rounded-lg">
+          Sair
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div id="grid-alunos" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+    </main>
+  </div>
+
+  <!-- Modal de Atribuição de Nota -->
+  <div id="modal-avaliacao" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+    <div class="glass-card bg-emerald-950 p-6 rounded-2xl w-full max-w-md border border-emerald-800 shadow-2xl relative">
+      <h3 class="text-xl font-bold text-emerald-100 mb-1" id="modal-nome-aluno">Avaliar Aluno</h3>
+      <p class="text-emerald-300/70 text-xs mb-6">Atribua uma nota inteira de 0 a 100 para o colega.</p>
+
+      <form id="form-avaliacao" onsubmit="salvarAvaliacao(event)">
+        <input type="hidden" id="modal-aluno-id" />
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-emerald-200 mb-2">Nota Inteira (0 a 100)</label>
+          <input type="number" id="input-nota" min="0" max="100" step="1" required placeholder="Ex: 85"
+                 class="w-full bg-emerald-900/60 border border-emerald-700 rounded-xl px-4 py-3 text-2xl font-bold text-emerald-300 focus:outline-none focus:border-emerald-500 text-center" />
+        </div>
+
+        <div class="flex gap-3">
+          <button type="button" onclick="fecharModal()" class="w-1/2 bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 py-3 rounded-xl font-semibold transition border border-emerald-700/50">
+            Cancelar
+          </button>
+          <button type="submit" class="w-1/2 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-semibold transition shadow-lg shadow-emerald-950/50">
+            Confirmar Nota
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyChRI7STks_zY0lauSYBD7St4RxgjWprak",
+      authDomain: "avaliaturma2a.firebaseapp.com",
+      databaseURL: "https://avaliaturma2a-default-rtdb.firebaseio.com",
+      projectId: "avaliaturma2a",
+      storageBucket: "avaliaturma2a.firebasestorage.app",
+      messagingSenderId: "764995356655",
+      appId: "1:764995356655:web:23ee3159f9dc35076b581a"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const listaAlunosOficial = [
+      "Alexandre Ferreira", "Arthur Baroni", "Arthur Calixto", "Arthur Cardozo",
+      "Arthur Marcos", "Bianca Maloste", "Camily Valenga", "Cauã Massoqueto",
+      "Daniel Marquete", "Davi Lopes", "Eloá Lopes", "Enzo Wernek",
+      "Felipe Novak", "Felipe Rodrigues", "Gabriel Magalhães", "Gabriel Wilsek",
+      "Gabriela Franco", "Gabrielle Alencar", "Guilherme Stadler", "Isabella Victória",
+      "Isabelly Pinheiro", "João Victor", "João Vitor", "Joaquim Santos",
+      "Lara Pires", "Leonardo Andrade", "Luiza Helena", "Maíra Stavni",
+      "Miguel Santos", "Milena Fedalto", "Milena Maria", "Nathalia Liberato",
+      "Nicolly de Souza", "Pedro Alves", "Pedro Martins", "Pietro de Melo",
+      "Rayssa Ribas", "Ruana Nicole", "Silvio Perussolo", "Sophia Alves",
+      "Tarcísio Vicelli"
+    ];
+
+    let alunoLogadoId = localStorage.getItem('alunoLogadoId2A') || null;
+    let estudantesDados = {};
+
+    const selectLogin = document.getElementById('select-aluno-login');
+    listaAlunosOficial.forEach((nome, idx) => {
+      const opt = document.createElement('option');
+      opt.value = idx + 1;
+      opt.textContent = nome;
+      selectLogin.appendChild(opt);
+    });
+
+    db.ref('estudantes').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        let inicial = {};
+        listaAlunosOficial.forEach((nome, idx) => {
+          inicial[idx + 1] = { id: idx + 1, nome: nome, notas: {} };
+        });
+        db.ref('estudantes').set(inicial);
+        estudantesDados = inicial;
+      } else {
+        estudantesDados = data;
+      }
+
+      if (alunoLogadoId) {
+        iniciarSessao();
+      }
+    });
+
+    function realizarLogin() {
+      const selected = selectLogin.value;
+      if (!selected) {
+        alert("Por favor, selecione seu nome para continuar.");
+        return;
+      }
+      alunoLogadoId = selected;
+      localStorage.setItem('alunoLogadoId2A', alunoLogadoId);
+      iniciarSessao();
+    }
+
+    function trocarUsuario() {
+      localStorage.removeItem('alunoLogadoId2A');
+      alunoLogadoId = null;
+      document.getElementById('modal-login').classList.remove('hidden');
+      document.getElementById('app-container').classList.add('hidden');
+    }
+
+    function iniciarSessao() {
+      document.getElementById('modal-login').classList.add('hidden');
+      document.getElementById('app-container').classList.remove('hidden');
+      const alunoLogado = estudantesDados[alunoLogadoId];
+      document.getElementById('nome-usuario-logado').innerText = alunoLogado ? alunoLogado.nome : '';
+      renderizarGrid();
+    }
+
+    function renderizarGrid() {
+      const grid = document.getElementById('grid-alunos');
+      grid.innerHTML = '';
+
+      let avaliadosCount = 0;
+      const totalColegas = listaAlunosOficial.length - 1;
+
+      Object.values(estudantesDados).forEach(estudante => {
+        const eProprioAluno = (estudante.id == alunoLogadoId);
+        
+        const notasObj = estudante.notas || {};
+        const jaAvaliou = !!notasObj[alunoLogadoId];
+
+        if (jaAvaliou && !eProprioAluno) avaliadosCount++;
+
+        const card = document.createElement('div');
+        card.className = `glass-card rounded-xl p-5 flex flex-col justify-between ${eProprioAluno ? 'opacity-50' : ''}`;
+
+        let botaoHtml = '';
+        if (eProprioAluno) {
+          botaoHtml = `<button disabled class="w-full mt-4 bg-emerald-950 text-emerald-600 py-2 rounded-lg text-xs font-medium cursor-not-allowed border border-emerald-900">Você</button>`;
+        } else if (jaAvaliou) {
+          const valorNota = typeof notasObj[alunoLogadoId] === 'object' ? notasObj[alunoLogadoId].nota : notasObj[alunoLogadoId];
+          botaoHtml = `<button disabled class="w-full mt-4 bg-emerald-900/40 border border-emerald-500/40 text-emerald-300 py-2 rounded-lg text-xs font-semibold cursor-not-allowed flex items-center justify-center gap-1">
+            <i data-lucide="check" class="w-3.5 h-3.5"></i> Nota Lançada (${Math.round(valorNota)})
+          </button>`;
+        } else {
+          botaoHtml = `<button onclick="abrirModal(${estudante.id})" class="w-full mt-4 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-lg font-medium text-xs transition border border-emerald-500">
+            Atribuir Nota
+          </button>`;
+        }
+
+        card.innerHTML = `
+          <div>
+            <div class="flex justify-between items-start mb-3">
+              <div class="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-300 font-bold text-sm">
+                ${estudante.nome.charAt(0)}
+              </div>
+              ${jaAvaliou && !eProprioAluno ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-semibold">Concluído</span>' : ''}
+            </div>
+            <h3 class="text-sm font-bold text-emerald-100 mb-1 truncate">${estudante.nome}</h3>
+          </div>
+          ${botaoHtml}
+        `;
+        grid.appendChild(card);
+      });
+
+      document.getElementById('texto-progresso').innerText = `${avaliadosCount} / ${totalColegas} colegas`;
+      lucide.createIcons();
+    }
+
+    function abrirModal(id) {
+      const estudante = estudantesDados[id];
+      if (!estudante) return;
+
+      document.getElementById('modal-aluno-id').value = id;
+      document.getElementById('modal-nome-aluno').innerText = `Avaliar ${estudante.nome}`;
+      document.getElementById('input-nota').value = '';
+      document.getElementById('modal-avaliacao').classList.remove('hidden');
+      document.getElementById('modal-avaliacao').classList.add('flex');
+    }
+
+    function fecharModal() {
+      document.getElementById('modal-avaliacao').classList.add('hidden');
+      document.getElementById('modal-avaliacao').classList.remove('flex');
+    }
+
+    function salvarAvaliacao(e) {
+      e.preventDefault();
+      const idAvaliado = document.getElementById('modal-aluno-id').value;
+      const rawValue = document.getElementById('input-nota').value;
+      const nota = Number(rawValue);
+
+      if (isNaN(nota) || !Number.isInteger(nota) || nota < 0 || nota > 100) {
+        alert('Por favor, digite um número inteiro válido de 0 a 100.');
+        return;
+      }
+
+      const avaliadorNome = estudantesDados[alunoLogadoId].nome;
+
+      db.ref(`estudantes/${idAvaliado}/notas/${alunoLogadoId}`).set({
+        nota: nota,
+        avaliadorId: alunoLogadoId,
+        avaliadorNome: avaliadorNome,
+        data: new Date().toISOString()
+      }, (error) => {
+        if (error) {
+          alert("Erro ao salvar avaliação.");
+        } else {
+          fecharModal();
+        }
+      });
+    }
+  </script>
+</body>
+</html>
